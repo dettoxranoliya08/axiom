@@ -2,10 +2,15 @@ import { useState, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer } from 'recharts';
 import * as math from 'mathjs';
 import { analyzeFunction } from './lib/analyzer';
+import ReactMarkdown from 'react-markdown';
+
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
 function App() {
   const [expr, setExpr] = useState('x^2 - 3*x + 2');
   const [error, setError] = useState('');
+  const [explanation, setExplanation] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const data = useMemo(() => {
     try {
@@ -30,6 +35,40 @@ function App() {
   }, [expr]);
 
   const insights = useMemo(() => analyzeFunction(data), [data]);
+
+  const askWhy = async () => {
+    setLoading(true);
+    setExplanation('');
+    try {
+      const prompt = `Ek student ne function f(x) = ${expr} ke baare mein ye numerical insights nikale hain (calculated, not guessed):
+
+${JSON.stringify(insights, null, 2)}
+
+In facts ko use karke, Hinglish (Hindi+English mix) mein samjhao ki:
+- Symmetry jo bataya gaya hai, wo kyu hai (mathematical reason do)
+- Turning points ka matlab kya hai is function ke liye
+- Increasing/decreasing behavior ka kya matlab hai
+
+Sirf in diye gaye facts ko explain karo, naye facts mat banao. Concise raho, 4-5 sentences, tutor jaisa tone.
+format your answer using markdown.
+use headings and bullet points where useful.`;
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+        }
+      );
+      const result = await response.json();
+      const text = result.candidates?.[0]?.content?.parts?.[0]?.text || 'Kuch error aaya, dobara try karo.';
+      setExplanation(text);
+    } catch (e) {
+      setExplanation('Connection error. Dobara try karo.');
+    }
+    setLoading(false);
+  };
 
   return (
     <div style={{ minHeight: '100vh', background: '#0E1117', color: '#E8E6E1', padding: '32px', fontFamily: 'sans-serif' }}>
@@ -98,6 +137,32 @@ function App() {
               <div style={{ marginTop: 10, color: '#E0A458' }}>
                 <strong>Undefined on:</strong>
                 {insights.undefinedRegions.map((r, i) => <div key={i}>({r[0]}, {r[1]})</div>)}
+              </div>
+            )}
+
+            <button
+              onClick={askWhy}
+              disabled={loading}
+              style={{
+                marginTop: 16,
+                width: '100%',
+                padding: '10px',
+                background: loading ? '#2C313D' : '#7FB6A8',
+                color: loading ? '#9C9890' : '#0E1117',
+                border: 'none',
+                borderRadius: 6,
+                fontWeight: 'bold',
+                cursor: loading ? 'default' : 'pointer',
+              }}
+            >
+              {loading ? 'Soch raha hai...' : 'Why?'}
+            </button>
+
+            {explanation && (
+              <div style={{ marginTop: 12, padding: 12, background: '#0E1117', borderRadius: 6, borderLeft: '3px solid #7FB6A8', whiteSpace: 'pre-wrap' }}>
+                <ReactMarkdown>
+                {explanation}
+                </ReactMarkdown>
               </div>
             )}
           </div>
