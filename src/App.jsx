@@ -38,39 +38,67 @@ function App() {
   const insights = useMemo(() => analyzeFunction(data), [data]);
 
   const askWhy = async () => {
-    setLoading(true);
-    setExplanation('');
-    try {
-      const prompt = `Ek student ne function f(x) = ${expr} ke baare mein ye numerical insights nikale hain (calculated, not guessed):
+  setLoading(true);
+  setExplanation('');
+  try {
+    // Structured summary banao raw JSON ki jagah
+    const summary = {
+      function: expr,
+      symmetry: insights.symmetry !== 'neither' 
+        ? `${insights.symmetry} (${insights.symmetryConfidence}% confidence)` 
+        : 'none',
+      behavior: [
+        ...( insights.increasingRegions?.map(r => r.type) || []),
+        ...( insights.decreasingRegions?.map(r => r.type) || []),
+        ...( insights.constantRegions?.length ? ['Piecewise Constant'] : []),
+      ].join(', ') || 'unknown',
+      turningPoints: insights.turningPoints?.length 
+        ? insights.turningPoints.map(p => `(${p[0]}, ${p[1]})`).join(', ')
+        : 'none',
+      continuity: insights.jumpDiscontinuities?.length 
+        ? `jump discontinuity at x = ${insights.jumpDiscontinuities.join(', ')}`
+        : insights.isDiscontinuous ? 'discontinuous' : 'continuous',
+      domain: insights.domain,
+      range: `[${insights.range?.min}, ${insights.range?.max}]`,
+      overflowClipped: insights.overflowClipped || false,
+    };
 
-${JSON.stringify(insights, null, 2)}
+    const prompt = `You are a mathematics teacher explaining to a Class 11 student.
 
-In facts ko use karke, Hinglish (Hindi+English mix) mein samjhao ki:
-- Symmetry jo bataya gaya hai, wo kyu hai (mathematical reason do)
-- Turning points ka matlab kya hai is function ke liye
-- Increasing/decreasing behavior ka kya matlab hai
-${insights.isDiscontinuous ? '- Ye function discontinuous hai, is baat ka bhi mention karo aur student ko batao ki insights carefully interpret karni chahiye.' : ''}
+Function: f(x) = ${summary.function}
 
-Sirf in diye gaye facts ko explain karo, naye facts mat banao. Concise raho, 4-5 sentences, tutor jaisa tone.
-format your answer using markdown.
-use headings and bullet points where useful.`;
+Facts (already calculated):
+- Symmetry: ${summary.symmetry}
+- Behavior: ${summary.behavior}
+- Turning Points: ${summary.turningPoints}
+- Continuity: ${summary.continuity}
+- Domain: ${summary.domain}
+- Range: ${summary.range}
+${summary.overflowClipped ? '- Note: Some values were clipped (too large to display)' : ''}
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-        }
-      );
-      const result = await response.json();
-      const text = result.candidates?.[0]?.content?.parts?.[0]?.text || 'Kuch error aaya, dobara try karo.';
-      setExplanation(text);
-    } catch (e) {
-      setExplanation('Connection error. Dobara try karo.');
-    }
-    setLoading(false);
-  };
+YOUR TASK:
+Do NOT repeat these facts.
+Explain WHY each fact occurs using mathematical intuition.
+Use Hinglish (Hindi + English mix).
+Give concrete mathematical reasoning (e.g. for floor(x): "har integer par ek jump hoti hai kyunki...")
+Use markdown formatting. 4-6 sentences.`;
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      }
+    );
+    const result = await response.json();
+    const text = result.candidates?.[0]?.content?.parts?.[0]?.text || 'Kuch error aaya, dobara try karo.';
+    setExplanation(text);
+  } catch (e) {
+    setExplanation('Connection error. Dobara try karo.');
+  }
+  setLoading(false);
+};
 
   return (
     <div style={{ minHeight: '100vh', background: '#0E1117', color: '#E8E6E1', padding: '32px', fontFamily: 'sans-serif' }}>
@@ -125,17 +153,23 @@ use headings and bullet points where useful.`;
             )}
 
             <div style={{ marginTop: 10 }}>
-              <strong>Increasing on:</strong>
-              {insights.increasingRegions?.length
-                ? insights.increasingRegions.map((r, i) => <div key={i}>({r[0]}, {r[1]})</div>)
-                : ' none'}
-            </div>
-
-            <div style={{ marginTop: 10 }}>
-              <strong>Decreasing on:</strong>
-              {insights.decreasingRegions?.length
-                ? insights.decreasingRegions.map((r, i) => <div key={i}>({r[0]}, {r[1]})</div>)
-                : ' none'}
+              <strong>Behavior:</strong>
+              {insights.isConstant && <div style={{ color: '#9C9890' }}>Constant function</div>}
+              {insights.increasingRegions?.map((r, i) => (
+                <div key={i} style={{ color: '#7FB6A8' }}>
+                  ↑ {r.type}: ({r.range[0]}, {r.range[1]})
+                </div>
+              ))}
+              {insights.decreasingRegions?.map((r, i) => (
+                <div key={i} style={{ color: '#E07A5F' }}>
+                  ↓ {r.type}: ({r.range[0]}, {r.range[1]})
+                </div>
+              ))}
+              {insights.constantRegions?.map((r, i) => (
+                <div key={i} style={{ color: '#9C9890' }}>
+                  → Constant: ({r.range[0]}, {r.range[1]})
+                </div>
+              ))}
             </div>
 
             <div style={{ marginTop: 10 }}>
