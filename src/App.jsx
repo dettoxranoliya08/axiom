@@ -19,7 +19,8 @@ function App() {
       for (let x = -10; x <= 10; x += 0.1) {
         let y;
         try {
-          y = compiled.evaluate({ x });
+          const cleanX = Math.round(x * 1000) / 1000;
+          y = compiled.evaluate({ x: cleanX });
           if (typeof y !== 'number' || !isFinite(y) || Math.abs(y) > 1000) y = null;
         } catch {
           y = null;
@@ -48,6 +49,7 @@ In facts ko use karke, Hinglish (Hindi+English mix) mein samjhao ki:
 - Symmetry jo bataya gaya hai, wo kyu hai (mathematical reason do)
 - Turning points ka matlab kya hai is function ke liye
 - Increasing/decreasing behavior ka kya matlab hai
+${insights.isDiscontinuous ? '- Ye function discontinuous hai, is baat ka bhi mention karo aur student ko batao ki insights carefully interpret karni chahiye.' : ''}
 
 Sirf in diye gaye facts ko explain karo, naye facts mat banao. Concise raho, 4-5 sentences, tutor jaisa tone.
 format your answer using markdown.
@@ -78,7 +80,7 @@ use headings and bullet points where useful.`;
         <label style={{ display: 'block', marginBottom: 8 }}>f(x) =</label>
         <input
           value={expr}
-          onChange={(e) => setExpr(e.target.value)}
+          onChange={(e) => { setExpr(e.target.value); setExplanation(''); }}
           style={{ width: '100%', padding: 10, fontSize: 16, background: '#1A1E27', color: '#fff', border: '1px solid #333', borderRadius: 6, boxSizing: 'border-box' }}
         />
 
@@ -89,12 +91,16 @@ use headings and bullet points where useful.`;
             <ResponsiveContainer width="100%" height={320}>
               <LineChart data={data}>
                 <CartesianGrid stroke="#2C313D" strokeDasharray="3 3" />
-                <XAxis dataKey="x" stroke="#888" />
+                <XAxis
+                  dataKey="x"
+                  stroke="#888"
+                  ticks={[-10,-8,-6,-4,-2,0,2,4,6,8,10]}
+                />
                 <YAxis stroke="#888" />
                 <ReferenceLine x={0} stroke="#666" />
                 <ReferenceLine y={0} stroke="#666" />
                 <Tooltip />
-                <Line type="monotone" dataKey="y" stroke="#7FB6A8" strokeWidth={2} dot={false} connectNulls={false} />
+                <Line type="linear" dataKey="y" stroke="#7FB6A8" strokeWidth={2} dot={false} connectNulls={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -111,6 +117,12 @@ use headings and bullet points where useful.`;
                 <span style={{ color: '#9C9890' }}> ({insights.symmetryConfidence}% confidence)</span>
               )}
             </div>
+
+            {insights.isDiscontinuous && (
+              <div style={{ marginTop: 8, color: '#E0A458', fontSize: 12 }}>
+                ⚠️ Discontinuous function detected
+              </div>
+            )}
 
             <div style={{ marginTop: 10 }}>
               <strong>Increasing on:</strong>
@@ -159,10 +171,8 @@ use headings and bullet points where useful.`;
             </button>
 
             {explanation && (
-              <div style={{ marginTop: 12, padding: 12, background: '#0E1117', borderRadius: 6, borderLeft: '3px solid #7FB6A8', whiteSpace: 'pre-wrap' }}>
-                <ReactMarkdown>
-                {explanation}
-                </ReactMarkdown>
+              <div style={{ marginTop: 12, padding: 12, background: '#0E1117', borderRadius: 6, borderLeft: '3px solid #7FB6A8' }}>
+                <ReactMarkdown>{explanation}</ReactMarkdown>
               </div>
             )}
           </div>

@@ -86,8 +86,10 @@ export function analyzeFunction(data) {
   }
   if (prevSign === 1) increasingRegions.push([regionStart, valid[valid.length - 1].x]);
   else if (prevSign === -1) decreasingRegions.push([regionStart, valid[valid.length - 1].x]);
+  const isDiscontinuous = undefinedRegions.length > 0 || turningPoints.length > 10;
 
   return {
+    isDiscontinuous,
     domain: undefinedRegions.length === 0 ? 'All real numbers (in this view)' : 'Some values undefined (see below)',
     range: { min: Math.round(yMin * 100) / 100, max: Math.round(yMax * 100) / 100 },
     symmetry,
