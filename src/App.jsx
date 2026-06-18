@@ -38,32 +38,40 @@ function App() {
   const insights = useMemo(() => analyzeFunction(data), [data]);
 
   const askWhy = async () => {
-  setLoading(true);
-  setExplanation('');
-  try {
-    // Structured summary banao raw JSON ki jagah
-    const summary = {
-      function: expr,
-      symmetry: insights.symmetry !== 'neither' 
-        ? `${insights.symmetry} (${insights.symmetryConfidence}% confidence)` 
-        : 'none',
-      behavior: [
-        ...( insights.increasingRegions?.map(r => r.type) || []),
-        ...( insights.decreasingRegions?.map(r => r.type) || []),
-        ...( insights.constantRegions?.length ? ['Piecewise Constant'] : []),
-      ].join(', ') || 'unknown',
-      turningPoints: insights.turningPoints?.length 
-        ? insights.turningPoints.map(p => `(${p[0]}, ${p[1]})`).join(', ')
-        : 'none',
-      continuity: insights.jumpDiscontinuities?.length 
-        ? `jump discontinuity at x = ${insights.jumpDiscontinuities.join(', ')}`
-        : insights.isDiscontinuous ? 'discontinuous' : 'continuous',
-      domain: insights.domain,
-      range: `[${insights.range?.min}, ${insights.range?.max}]`,
-      overflowClipped: insights.overflowClipped || false,
-    };
+    setLoading(true);
+    setExplanation('');
+    try {
+      const summary = {
+        function: expr,
+        symmetry: insights.symmetry !== 'neither'
+          ? `${insights.symmetry} (${insights.symmetryConfidence}% confidence)`
+          : 'none',
+        behavior: [
+          ...(insights.increasingRegions?.map(r => r.type) || []),
+          ...(insights.decreasingRegions?.map(r => r.type) || []),
+          ...(insights.constantRegions?.length ? ['Piecewise Constant'] : []),
+        ].join(', ') || 'unknown',
+        turningPoints: insights.turningPoints?.length
+          ? insights.turningPoints.map(p => `(${p[0]}, ${p[1]})`).join(', ')
+          : 'none',
+        continuity: insights.continuity || 'continuous',
+        asymptotes: insights.asymptotes?.length
+          ? `x = ${insights.asymptotes.join(', ')}`
+          : 'none',
+        jumpPoints: insights.jumpDiscontinuities?.length
+          ? `x = ${insights.jumpDiscontinuities.join(', ')}`
+          : 'none',
+        removable: insights.removableDiscontinuities?.length
+          ? `x = ${insights.removableDiscontinuities.join(', ')}`
+          : 'none',
+        domain: insights.domain,
+        range: `[${insights.range?.min}, ${insights.range?.max}]`,
+        overflow: insights.overflowRegions?.length > 0
+          ? `Values too large to display near ${insights.overflowRegions.map(r => `(${r[0]}, ${r[1]})`).join(', ')}`
+          : 'none',
+      };
 
-    const prompt = `You are a mathematics teacher explaining to a Class 11 student.
+      const prompt = `You are a mathematics teacher explaining to a Class 11 student.
 
 Function: f(x) = ${summary.function}
 
@@ -71,34 +79,38 @@ Facts (already calculated):
 - Symmetry: ${summary.symmetry}
 - Behavior: ${summary.behavior}
 - Turning Points: ${summary.turningPoints}
-- Continuity: ${summary.continuity}
+- Continuity Type: ${summary.continuity}
+- Vertical Asymptotes: ${summary.asymptotes}
+- Jump Discontinuities: ${summary.jumpPoints}
+- Removable Discontinuities: ${summary.removable}
 - Domain: ${summary.domain}
 - Range: ${summary.range}
-${summary.overflowClipped ? '- Note: Some values were clipped (too large to display)' : ''}
+- Overflow/Clipping: ${summary.overflow}
 
 YOUR TASK:
 Do NOT repeat these facts.
 Explain WHY each fact occurs using mathematical intuition.
 Use Hinglish (Hindi + English mix).
-Give concrete mathematical reasoning (e.g. for floor(x): "har integer par ek jump hoti hai kyunki...")
-Use markdown formatting. 4-6 sentences.`;
+Give concrete mathematical reasoning.
+Example style: "floor(x) mein har integer par jump isliye hoti hai kyunki..."
+Use markdown formatting. 4-6 points.`;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      }
-    );
-    const result = await response.json();
-    const text = result.candidates?.[0]?.content?.parts?.[0]?.text || 'Kuch error aaya, dobara try karo.';
-    setExplanation(text);
-  } catch (e) {
-    setExplanation('Connection error. Dobara try karo.');
-  }
-  setLoading(false);
-};
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+        }
+      );
+      const result = await response.json();
+      const text = result.candidates?.[0]?.content?.parts?.[0]?.text || 'Kuch error aaya, dobara try karo.';
+      setExplanation(text);
+    } catch (e) {
+      setExplanation('Connection error. Dobara try karo.');
+    }
+    setLoading(false);
+  };
 
   return (
     <div style={{ minHeight: '100vh', background: '#0E1117', color: '#E8E6E1', padding: '32px', fontFamily: 'sans-serif' }}>
@@ -146,29 +158,17 @@ Use markdown formatting. 4-6 sentences.`;
               )}
             </div>
 
-            {insights.isDiscontinuous && (
-              <div style={{ marginTop: 8, color: '#E0A458', fontSize: 12 }}>
-                ⚠️ Discontinuous function detected
-              </div>
-            )}
-
             <div style={{ marginTop: 10 }}>
               <strong>Behavior:</strong>
               {insights.isConstant && <div style={{ color: '#9C9890' }}>Constant function</div>}
               {insights.increasingRegions?.map((r, i) => (
-                <div key={i} style={{ color: '#7FB6A8' }}>
-                  ↑ {r.type}: ({r.range[0]}, {r.range[1]})
-                </div>
+                <div key={i} style={{ color: '#7FB6A8' }}>↑ {r.type}: ({r.range[0]}, {r.range[1]})</div>
               ))}
               {insights.decreasingRegions?.map((r, i) => (
-                <div key={i} style={{ color: '#E07A5F' }}>
-                  ↓ {r.type}: ({r.range[0]}, {r.range[1]})
-                </div>
+                <div key={i} style={{ color: '#E07A5F' }}>↓ {r.type}: ({r.range[0]}, {r.range[1]})</div>
               ))}
               {insights.constantRegions?.map((r, i) => (
-                <div key={i} style={{ color: '#9C9890' }}>
-                  → Constant: ({r.range[0]}, {r.range[1]})
-                </div>
+                <div key={i} style={{ color: '#9C9890' }}>→ Constant: ({r.range[0]}, {r.range[1]})</div>
               ))}
             </div>
 
@@ -179,10 +179,26 @@ Use markdown formatting. 4-6 sentences.`;
                 : ' none'}
             </div>
 
-            {insights.undefinedRegions?.length > 0 && (
-              <div style={{ marginTop: 10, color: '#E0A458' }}>
-                <strong>Undefined on:</strong>
-                {insights.undefinedRegions.map((r, i) => <div key={i}>({r[0]}, {r[1]})</div>)}
+            {insights.continuity && insights.continuity !== 'continuous' && (
+              <div style={{ marginTop: 10 }}>
+                <strong style={{ color: '#E0A458' }}>Continuity:</strong>
+                <div style={{ color: '#E0A458', fontSize: 12, marginTop: 4 }}>
+                  {insights.continuity === 'vertical-asymptote' && `⚡ Vertical Asymptote at x = ${insights.asymptotes?.join(', ')}`}
+                  {insights.continuity === 'jump-discontinuity' && `↕ Jump Discontinuity at x = ${insights.jumpDiscontinuities?.join(', ')}`}
+                  {insights.continuity === 'removable-discontinuity' && `○ Removable Discontinuity at x = ${insights.removableDiscontinuities?.join(', ')}`}
+                  {insights.continuity === 'mixed-discontinuity' && `⚠️ Mixed Discontinuity`}
+                  {insights.continuity === 'partially-undefined' && `⚠️ Partially Undefined`}
+                </div>
+                {insights.overflowRegions?.length > 0 && (
+                  <div style={{ color: '#9C9890', fontSize: 11, marginTop: 4 }}>
+                    📈 Overflow: {insights.overflowRegions.map(r => `(${r[0]}, ${r[1]})`).join(', ')}
+                  </div>
+                )}
+                {insights.trueUndefinedRegions?.length > 0 && (
+                  <div style={{ color: '#E07A5F', fontSize: 11, marginTop: 4 }}>
+                    ✗ Undefined: {insights.trueUndefinedRegions.map(r => `(${r[0]}, ${r[1]})`).join(', ')}
+                  </div>
+                )}
               </div>
             )}
 
