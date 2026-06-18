@@ -96,7 +96,7 @@ Example style: "floor(x) mein har integer par jump isliye hoti hai kyunki..."
 Use markdown formatting. 4-6 points.`;
 
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -125,6 +125,7 @@ Use markdown formatting. 4-6 points.`;
         />
 
         {error && <p style={{ color: 'tomato' }}>{error}</p>}
+ 
 
         <div style={{ display: 'flex', gap: 16, marginTop: 20, flexWrap: 'wrap' }}>
           <div style={{ flex: '2 1 400px', background: '#1A1E27', borderRadius: 8, padding: 10 }}>
