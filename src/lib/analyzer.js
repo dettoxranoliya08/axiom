@@ -27,17 +27,16 @@ function snapBoundary(val) {
   if (Math.abs(val - rounded5) < 0.15) return rounded5;
   return Math.round(val * 10) / 10;
 }
-// Known trig asymptote values pe snap karo
+
 function snapToTrigValue(val) {
   const candidates = [];
-  // π/2 + kπ ke multiples (tan, sec)
   for (let k = -4; k <= 4; k++) {
-    candidates.push(Math.PI / 2 + k * Math.PI); // ≈ 1.5708, 4.7124, etc.
-    candidates.push(k * Math.PI);                 // 0, π, 2π etc. (cot, csc)
+    candidates.push(Math.PI / 2 + k * Math.PI);
+    candidates.push(k * Math.PI);
   }
   for (const c of candidates) {
     if (Math.abs(val - c) < 0.25) {
-      return Math.round(c * 100) / 100; // e.g. 1.57, 3.14
+      return Math.round(c * 100) / 100;
     }
   }
   return snapBoundary(val);
@@ -127,6 +126,7 @@ export function analyzeFunction(data) {
   // STEP 4: DOMAIN DISPLAY STRING
   function formatDomainString(intervals) {
     if (intervals.length === 0) return 'Undefined everywhere';
+    if (intervals.length >= 4) return 'ℝ \\ {vertical asymptotes} (in this view)';
     if (intervals.length === 1) {
       const iv = intervals[0];
       const from = iv.from <= -9.9 ? '-∞' : iv.from;
@@ -143,10 +143,6 @@ export function analyzeFunction(data) {
       const r = iv.toOpen ? ')' : ']';
       return `${l}${from}, ${to}${r}`;
     }).join(' ∪ ');
-    // Agar 4+ intervals hain to simplified show karo
-if (intervals.length >= 4) {
-  return 'ℝ \\ {vertical asymptotes} (in this view)';
-}
   }
 
   // STEP 5: CONTINUITY ENGINE
@@ -195,25 +191,25 @@ if (intervals.length >= 4) {
   else if (uniqueRemovable.length > 0) continuity = 'removable-discontinuity';
   else if (domainIntervals.length > 1) continuity = 'partially-undefined';
 
-  // STEP 6: INTERVAL BUILDER
+  // STEP 6: INTERVAL BUILDER — FIX #1
+  // Pehle: prevBad || nextBad se valid boundary points bhi drop hote the
+  // Ab: sirf asymptote-adjacent points ko remove karo, normal boundaries allow karo
   const safeIntervals = [];
   let currentInterval = [];
 
   for (let i = 0; i < classified.length; i++) {
     const p = classified[i];
-    const prev = i > 0 ? classified[i - 1] : null;
-    const next = i < classified.length - 1 ? classified[i + 1] : null;
 
+    // Skip karo agar point valid nahi ya bahut large hai
     if (p.status !== 'valid' || Math.abs(p.y) > LARGE) {
       if (currentInterval.length > 1) safeIntervals.push([...currentInterval]);
       currentInterval = [];
       continue;
     }
 
-    const prevBad = prev && (prev.status !== 'valid' || Math.abs(prev.y) > LARGE);
-    const nextBad = next && (next.status !== 'valid' || Math.abs(next.y) > LARGE);
-
-    if (prevBad || nextBad) {
+    // Skip karo agar asymptote ke bilkul paas hai
+    const nearAsymptote = uniqueAsymptotes.some(a => Math.abs(a - p.x) < 0.2);
+    if (nearAsymptote) {
       if (currentInterval.length > 1) safeIntervals.push([...currentInterval]);
       currentInterval = [];
       continue;
@@ -225,6 +221,7 @@ if (intervals.length >= 4) {
 
   // STEP 7: MONOTONICITY ENGINE
   function classifySegment(points) {
+    if (!points || points.length < 2) return 'unknown';
     let up = 0, down = 0, flat = 0;
     for (let i = 1; i < points.length; i++) {
       const dy = points[i].y - points[i - 1].y;
@@ -247,13 +244,16 @@ if (intervals.length >= 4) {
   const turningPoints = [];
 
   for (const interval of safeIntervals) {
-    if (interval.length < 8) continue;
+    // FIX #2: 8 se 3 kar diya — chhote intervals bhi process honge
+    if (interval.length < 3) continue;
 
     let regionStart = interval[0].x;
     let prevSign = null;
 
     for (let i = 1; i < interval.length; i++) {
-      const slope = (interval[i].y - interval[i - 1].y) / (interval[i].x - interval[i - 1].x);
+      const dx = interval[i].x - interval[i - 1].x;
+      if (dx === 0) continue;
+      const slope = (interval[i].y - interval[i - 1].y) / dx;
       const sign = slope > 1e-4 ? 1 : slope < -1e-4 ? -1 : 0;
       if (sign === 0) continue;
 
@@ -261,22 +261,34 @@ if (intervals.length >= 4) {
         prevSign = sign;
         regionStart = interval[i - 1].x;
       } else if (sign !== prevSign) {
-        const range = [snapBoundary(Math.round(regionStart * 100) / 100), snapBoundary(Math.round(interval[i - 1].x * 100) / 100)];
+        const range = [
+          snapBoundary(Math.round(regionStart * 100) / 100),
+          snapBoundary(Math.round(interval[i - 1].x * 100) / 100)
+        ];
         const sub = interval.filter(p => p.x >= regionStart && p.x <= interval[i - 1].x);
         const cls = classifySegment(sub);
         if (cls === 'strictly_increasing' || cls === 'non_decreasing')
           increasingRegions.push({ range, type: cls === 'strictly_increasing' ? 'Strictly Increasing' : 'Non-Decreasing' });
         else if (cls === 'strictly_decreasing' || cls === 'non_increasing')
           decreasingRegions.push({ range, type: cls === 'strictly_decreasing' ? 'Strictly Decreasing' : 'Non-Increasing' });
-        turningPoints.push([snapBoundary(Math.round(interval[i - 1].x * 100) / 100), Math.round(interval[i - 1].y * 100) / 100]);
+
+        turningPoints.push([
+          snapBoundary(Math.round(interval[i - 1].x * 100) / 100),
+          Math.round(interval[i - 1].y * 100) / 100
+        ]);
         regionStart = interval[i - 1].x;
         prevSign = sign;
       }
     }
 
-    const lastRange = [snapBoundary(Math.round(regionStart * 100) / 100), snapBoundary(Math.round(interval[interval.length - 1].x * 100) / 100)];
+    // Last region
+    const lastRange = [
+      snapBoundary(Math.round(regionStart * 100) / 100),
+      snapBoundary(Math.round(interval[interval.length - 1].x * 100) / 100)
+    ];
     const lastSub = interval.filter(p => p.x >= regionStart);
     const lastCls = classifySegment(lastSub);
+
     if (lastCls === 'strictly_increasing' || lastCls === 'non_decreasing')
       increasingRegions.push({ range: lastRange, type: lastCls === 'strictly_increasing' ? 'Strictly Increasing' : 'Non-Decreasing' });
     else if (lastCls === 'strictly_decreasing' || lastCls === 'non_increasing')
@@ -285,7 +297,8 @@ if (intervals.length >= 4) {
       constantRegions.push({ range: lastRange, type: 'Constant' });
   }
 
-  const MIN_WIDTH = 0.5;
+  // FIX #3: MIN_WIDTH 0.5 → 0.15 — valid chhote regions ab bhi dikhenge
+  const MIN_WIDTH = 0.15;
   const cleanIncreasing = increasingRegions
     .filter(r => (r.range[1] - r.range[0]) >= MIN_WIDTH)
     .map(r => ({ ...r, range: [snapBoundary(r.range[0]), snapBoundary(r.range[1])] }));
@@ -293,11 +306,10 @@ if (intervals.length >= 4) {
     .filter(r => (r.range[1] - r.range[0]) >= MIN_WIDTH)
     .map(r => ({ ...r, range: [snapBoundary(r.range[0]), snapBoundary(r.range[1])] }));
   const cleanTurning = turningPoints.filter(([x, y]) => {
-  if (Math.abs(y) > LARGE * 0.3) return false;
-  // Asymptote ke paas ke turning points ignore karo
-  if (uniqueAsymptotes.some(a => Math.abs(a - x) < 0.3)) return false;
-  return true;
-});
+    if (Math.abs(y) > LARGE * 0.3) return false;
+    if (uniqueAsymptotes.some(a => Math.abs(a - x) < 0.3)) return false;
+    return true;
+  });
 
   // STEP 8: SYMMETRY ENGINE
   const symMap = new Map();
@@ -354,6 +366,30 @@ if (intervals.length >= 4) {
   }
   if (inOver) overflowRegions.push([Math.round(overStart * 100) / 100, classified[classified.length - 1].x]);
 
+  // FIX #4: Agar koi region nahi mila toh fallback — poore data pe classifySegment chalao
+  let finalIncreasing = cleanIncreasing;
+  let finalDecreasing = cleanDecreasing;
+
+  if (cleanIncreasing.length === 0 && cleanDecreasing.length === 0 && constantRegions.length === 0) {
+    // Fallback: saare valid, non-large points pe ek baar classify karo
+    const fallbackPoints = classified.filter(p =>
+      p.status === 'valid' &&
+      Math.abs(p.y) <= LARGE &&
+      !uniqueAsymptotes.some(a => Math.abs(a - p.x) < 0.3)
+    );
+    if (fallbackPoints.length >= 3) {
+      const cls = classifySegment(fallbackPoints);
+      const range = [
+        snapBoundary(fallbackPoints[0].x),
+        snapBoundary(fallbackPoints[fallbackPoints.length - 1].x)
+      ];
+      if (cls === 'strictly_increasing' || cls === 'non_decreasing')
+        finalIncreasing = [{ range, type: cls === 'strictly_increasing' ? 'Strictly Increasing' : 'Non-Decreasing' }];
+      else if (cls === 'strictly_decreasing' || cls === 'non_increasing')
+        finalDecreasing = [{ range, type: cls === 'strictly_decreasing' ? 'Strictly Decreasing' : 'Non-Increasing' }];
+    }
+  }
+
   return {
     domain: formatDomainString(domainIntervals),
     domainIntervals,
@@ -365,11 +401,11 @@ if (intervals.length >= 4) {
     jumpDiscontinuities: uniqueJumps,
     removableDiscontinuities: uniqueRemovable,
     horizontalAsymptotes,
-    increasingRegions: cleanIncreasing,
-    decreasingRegions: cleanDecreasing,
+    increasingRegions: finalIncreasing,
+    decreasingRegions: finalDecreasing,
     constantRegions,
     turningPoints: cleanTurning,
-    isConstant: cleanIncreasing.length === 0 && cleanDecreasing.length === 0 && constantRegions.length > 0,
+    isConstant: finalIncreasing.length === 0 && finalDecreasing.length === 0 && constantRegions.length > 0,
     overflowRegions,
   };
 }

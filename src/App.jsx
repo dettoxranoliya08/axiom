@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer } from 'recharts';
 import * as math from 'mathjs';
-import { analyzeFunction } from './lib/analyzer';
+import { analyzeWithTruthEngine } from './truth/orchestrator';
 import ReactMarkdown from 'react-markdown';
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
@@ -37,7 +37,7 @@ function App() {
       }
       setError('');
       return points;
-    } catch (e) {
+    } catch {
       setError('Invalid function. Try: x^2 - 3*x + 2');
       return [];
     }
@@ -48,7 +48,13 @@ function App() {
     [taggedPoints]
   );
 
-  const insights = useMemo(() => analyzeFunction(taggedPoints), [taggedPoints]);
+  const truthInsight = useMemo(() => analyzeWithTruthEngine({
+    expression: expr,
+    samples: taggedPoints,
+    viewport: { xMin: -10, xMax: 10 },
+  }), [expr, taggedPoints]);
+
+  const insights = truthInsight.legacy;
 
   const askWhy = async () => {
     setLoading(true);
@@ -79,7 +85,7 @@ function App() {
 
 Function: f(x) = ${summary.function}
 
-Facts (already calculated):
+Visual observations from sampled graph points (not mathematical proof):
 - Symmetry: ${summary.symmetry}
 - Behavior: ${summary.behavior}
 - Turning Points: ${summary.turningPoints}
@@ -108,7 +114,7 @@ Use markdown formatting. 4-6 points.`;
       const result = await response.json();
       const text = result.candidates?.[0]?.content?.parts?.[0]?.text || 'Kuch error aaya, dobara try karo.';
       setExplanation(text);
-    } catch (e) {
+    } catch {
       setExplanation('Connection error. Dobara try karo.');
     }
     setLoading(false);
