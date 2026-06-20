@@ -27,6 +27,21 @@ function snapBoundary(val) {
   if (Math.abs(val - rounded5) < 0.15) return rounded5;
   return Math.round(val * 10) / 10;
 }
+// Known trig asymptote values pe snap karo
+function snapToTrigValue(val) {
+  const candidates = [];
+  // π/2 + kπ ke multiples (tan, sec)
+  for (let k = -4; k <= 4; k++) {
+    candidates.push(Math.PI / 2 + k * Math.PI); // ≈ 1.5708, 4.7124, etc.
+    candidates.push(k * Math.PI);                 // 0, π, 2π etc. (cot, csc)
+  }
+  for (const c of candidates) {
+    if (Math.abs(val - c) < 0.25) {
+      return Math.round(c * 100) / 100; // e.g. 1.57, 3.14
+    }
+  }
+  return snapBoundary(val);
+}
 
 export function analyzeFunction(data) {
   if (!data || data.length === 0) return getEmptyResult();
@@ -95,11 +110,11 @@ export function analyzeFunction(data) {
     if (prevLarge && currLarge) {
       const oppSigns = (prev.y > 0 && curr.y < 0) || (prev.y < 0 && curr.y > 0);
       if (oppSigns) {
-        verticalAsymptotes.push(snapBoundary(Math.round(((prev.x + curr.x) / 2) * 10) / 10));
+        verticalAsymptotes.push(snapToTrigValue(Math.round(((prev.x + curr.x) / 2) * 10) / 10));
       }
     }
-    if (prevLarge && currUndef) verticalAsymptotes.push(snapBoundary(Math.round(curr.x * 10) / 10));
-    if (prevUndef && currLarge) verticalAsymptotes.push(snapBoundary(Math.round(prev.x * 10) / 10));
+    if (prevLarge && currUndef) verticalAsymptotes.push(snapToTrigValue(Math.round(curr.x * 10) / 10));
+    if (prevUndef && currLarge) verticalAsymptotes.push(snapToTrigValue(Math.round(prev.x * 10) / 10));
   }
 
   const uniqueAsymptotes = [...new Set(verticalAsymptotes)];
@@ -277,7 +292,12 @@ if (intervals.length >= 4) {
   const cleanDecreasing = decreasingRegions
     .filter(r => (r.range[1] - r.range[0]) >= MIN_WIDTH)
     .map(r => ({ ...r, range: [snapBoundary(r.range[0]), snapBoundary(r.range[1])] }));
-  const cleanTurning = turningPoints.filter(([x, y]) => Math.abs(y) < LARGE * 0.3);
+  const cleanTurning = turningPoints.filter(([x, y]) => {
+  if (Math.abs(y) > LARGE * 0.3) return false;
+  // Asymptote ke paas ke turning points ignore karo
+  if (uniqueAsymptotes.some(a => Math.abs(a - x) < 0.3)) return false;
+  return true;
+});
 
   // STEP 8: SYMMETRY ENGINE
   const symMap = new Map();
